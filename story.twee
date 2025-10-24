@@ -1,0 +1,649 @@
+:: StoryTitle
+AI舆情剧本框架
+
+:: StoryData
+{
+    "ifid": "B89F0A8E-67B7-4A1F-9F0E-123456789ABC",
+    "format": "SugarCube",
+    "format-version": "2.37.3",
+    "start": "Start"
+}
+
+:: StoryInit [script]
+/* ================================================================
+   【图片与剧本基础设置区】
+   1. 修改下方的路径即可替换对应的图片资源。
+   2. 仅需保留引号，替换中间的文字为你的图片链接或上传后的文件名。
+   3. 如果暂时没有图片，可填空字符串 ""。
+   ================================================================ */
+setup.menuBackground = "images/backgrounds/menu-default.jpg"; // 主菜单背景
+setup.scriptModeImage = "images/ui/script-mode-placeholder.png"; // 剧本模式图标
+setup.publicOpinionImage = "images/ui/public-opinion-placeholder.png"; // 舆情模式图标
+setup.defaultCover = "images/covers/default-cover.jpg"; // 默认封面
+setup.dialogueBackground = "images/backgrounds/studio.jpg"; // 对话场景背景
+setup.defaultLeftPortrait = "images/portraits/left-placeholder.png"; // 左侧人物立绘
+setup.defaultRightPortrait = "images/portraits/right-placeholder.png"; // 右侧人物立绘
+
+/* ================================================================
+   【舆情剧本设置区】
+   - 修改标题、简介、封面以及开始时跳转的章节。
+   - 想替换主展示剧本时，将想要的内容填入 currentScenario。
+   - 往期剧本可以放在 pastScenarios 数组中，需要展示时在舆情模式首页点击“放到主位置”。
+   ================================================================ */
+State.variables.currentScenario = State.variables.currentScenario || {
+    title: "示例舆情剧本",
+    cover: "images/covers/current-story.jpg",
+    description: "这里展示的是主推剧本简介。替换为你当前主推的剧本介绍，简要说明事件背景与目标。",
+    startPassage: "示例剧本-序章"
+};
+
+State.variables.pastScenarios = State.variables.pastScenarios || [
+    {
+        title: "往期剧本 A",
+        cover: "images/covers/past-a.jpg",
+        description: "这里写往期剧本的亮点概述，方便玩家查看。",
+        startPassage: "往期剧本 A-序章"
+    },
+    {
+        title: "往期剧本 B",
+        cover: "images/covers/past-b.jpg",
+        description: "第二个往期剧本的简单说明。",
+        startPassage: "往期剧本 B-序章"
+    }
+];
+
+/* 对话场景默认变量：如果某个剧本需要特殊图片，可以在对应 passage 里重新赋值。 */
+State.variables.sceneBackground = State.variables.sceneBackground || setup.dialogueBackground;
+State.variables.dialogueList = State.variables.dialogueList || [];
+State.variables.dialogueIndex = State.variables.dialogueIndex || 0;
+State.variables.leftPortraitActive = State.variables.leftPortraitActive || setup.defaultLeftPortrait; // 当前左侧立绘
+State.variables.rightPortraitActive = State.variables.rightPortraitActive || setup.defaultRightPortrait; // 当前右侧立绘
+
+:: StoryStylesheet [stylesheet]
+/* ================================================================
+   全局基础样式。可以通过替换颜色或字体来自定义视觉风格。
+   ================================================================ */
+body {
+    font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    background-color: #0f172a;
+    color: #f8fafc;
+}
+
+button, .button {
+    font-family: inherit;
+}
+
+.button {
+    display: inline-block;
+    text-decoration: none;
+}
+
+/* =================== 主菜单样式 =================== */
+.main-menu {
+    min-height: 100vh;
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.main-menu::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.75);
+}
+
+.menu-content {
+    position: relative;
+    z-index: 1;
+    max-width: 1080px;
+    width: 100%;
+    text-align: center;
+}
+
+.menu-title {
+    font-size: 3rem;
+    margin-bottom: 1.5rem;
+    letter-spacing: 0.12em;
+}
+
+.menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.mode-card {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 20px;
+    padding: 1.5rem;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.mode-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 30px 60px rgba(15, 23, 42, 0.45);
+}
+
+.mode-card img {
+    width: 220px;
+    height: 220px;
+    object-fit: cover;
+    border-radius: 16px;
+    margin-bottom: 1rem;
+    border: 2px solid rgba(148, 163, 184, 0.4);
+}
+
+.mode-card h2 {
+    font-size: 1.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.mode-card p {
+    flex: 1 1 auto;
+    opacity: 0.85;
+    line-height: 1.6;
+    margin-bottom: 1.2rem;
+}
+
+.mode-card .button {
+    background: linear-gradient(135deg, #38bdf8, #6366f1);
+    border: none;
+    border-radius: 999px;
+    padding: 0.6rem 1.8rem;
+    color: #0f172a;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.mode-card .button:hover {
+    transform: scale(1.05);
+}
+
+.mode-card .button.disabled {
+    background: rgba(148, 163, 184, 0.25);
+    color: rgba(226, 232, 240, 0.6);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* =================== 舆情模式首页 =================== */
+.scenario-layout {
+    min-height: 100vh;
+    background: linear-gradient(160deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+    padding: 3rem 6vw;
+}
+
+.scenario-main {
+    background: rgba(15, 23, 42, 0.65);
+    border-radius: 24px;
+    padding: 2rem;
+    display: flex;
+    gap: 2rem;
+    align-items: stretch;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
+}
+
+.scenario-main img {
+    width: 320px;
+    border-radius: 18px;
+    object-fit: cover;
+    border: 2px solid rgba(148, 163, 184, 0.35);
+}
+
+.scenario-info h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.scenario-info p {
+    line-height: 1.8;
+    opacity: 0.9;
+    margin-bottom: 1.5rem;
+}
+
+.scenario-info .button {
+    background: linear-gradient(135deg, #4ade80, #22d3ee);
+    color: #052e16;
+    border: none;
+    border-radius: 999px;
+    padding: 0.7rem 2.2rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.scenario-archive {
+    background: rgba(15, 23, 42, 0.6);
+    border-radius: 20px;
+    padding: 2rem;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
+}
+
+.scenario-archive h3 {
+    font-size: 1.6rem;
+    margin-bottom: 1.5rem;
+}
+
+.archive-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 16px;
+    transition: background 0.25s ease;
+}
+
+.archive-item:hover {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+.archive-item img {
+    width: 88px;
+    height: 88px;
+    object-fit: cover;
+    border-radius: 12px;
+}
+
+.archive-item button {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 999px;
+    padding: 0.35rem 1.2rem;
+    color: #e2e8f0;
+    cursor: pointer;
+}
+
+.archive-item button:hover {
+    border-color: #38bdf8;
+    color: #38bdf8;
+}
+
+.back-button {
+    position: fixed;
+    top: 2rem;
+    left: 2rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    border-radius: 999px;
+    padding: 0.5rem 1.5rem;
+    color: #e2e8f0;
+}
+
+/* =================== 对话场景样式 =================== */
+.dialogue-scene {
+    min-height: 100vh;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 3rem 6vw;
+    position: relative;
+}
+
+.dialogue-scene::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.dialogue-content {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    align-items: flex-end;
+    gap: 1.5rem;
+}
+
+.dialogue-portrait {
+    height: 360px;
+    object-fit: contain;
+    opacity: 0.35;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.dialogue-portrait.active {
+    opacity: 1;
+    transform: translateY(-12px);
+}
+
+.dialogue-box {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 24px;
+    padding: 2rem;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.55);
+}
+
+.dialogue-speaker {
+    font-weight: 700;
+    font-size: 1.2rem;
+    margin-bottom: 0.8rem;
+    letter-spacing: 0.08em;
+    color: #38bdf8;
+}
+
+.dialogue-text {
+    min-height: 120px;
+    line-height: 1.8;
+    font-size: 1.05rem;
+}
+
+.dialogue-controls {
+    margin-top: 1.2rem;
+    text-align: right;
+}
+
+.dialogue-controls button {
+    background: linear-gradient(135deg, #38bdf8, #6366f1);
+    border: none;
+    border-radius: 999px;
+    padding: 0.55rem 1.8rem;
+    color: #0f172a;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.dialogue-controls button:hover {
+    transform: scale(1.05);
+}
+
+@media (max-width: 1024px) {
+    .scenario-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .scenario-main {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .dialogue-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .dialogue-box {
+        order: 3;
+    }
+
+    .dialogue-controls {
+        text-align: center;
+    }
+}
+
+:: StoryJavascript [script]
+/* ================================================================
+   自定义功能脚本：包含打字机效果与对话渲染工具。
+   ================================================================ */
+setup.typewriterEffect = function (element, text, speed) {
+    element.textContent = "";
+    let index = 0;
+    const timer = setInterval(() => {
+        element.textContent = text.slice(0, index);
+        index += 1;
+        if (index > text.length) {
+            clearInterval(timer);
+        }
+    }, speed);
+};
+
+Macro.add('typewriter', {
+    tags: null,
+    handler() {
+        const text = this.args[0] || "";
+        const speed = this.args[1] || 35;
+        const container = document.createElement('span');
+        container.classList.add('typewriter-text');
+        this.output.appendChild(container);
+        setup.typewriterEffect(container, text, speed);
+    }
+});
+
+Widget.add('renderDialogue', function () {
+    const dialogues = this.args[0] || [];
+    const nextPassage = this.args[1] || null;
+    if (!Array.isArray(dialogues) || dialogues.length === 0) {
+        return;
+    }
+
+    const storedIndex = Number(State.variables.dialogueIndex) || 0;
+    const safeIndex = Math.min(Math.max(storedIndex, 0), dialogues.length - 1);
+    if (storedIndex !== safeIndex) {
+        State.variables.dialogueIndex = safeIndex;
+    }
+
+    const current = dialogues[safeIndex];
+
+    /* 根据当前语句更新左右立绘，未指定时沿用上一句或默认占位。 */
+    if (current.leftPortrait) {
+        State.variables.leftPortraitActive = current.leftPortrait;
+    }
+    if (current.rightPortrait) {
+        State.variables.rightPortraitActive = current.rightPortrait;
+    }
+    if (current.side === 'left' && current.portrait) {
+        State.variables.leftPortraitActive = current.portrait;
+    }
+    if (current.side === 'right' && current.portrait) {
+        State.variables.rightPortraitActive = current.portrait;
+    }
+
+    const leftPortrait = State.variables.leftPortraitActive || setup.defaultLeftPortrait;
+    const rightPortrait = State.variables.rightPortraitActive || setup.defaultRightPortrait;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dialogue-content';
+
+    const leftImg = document.createElement('img');
+    leftImg.className = 'dialogue-portrait ' + (current.side === 'left' ? 'active' : '');
+    leftImg.src = leftPortrait;
+    leftImg.alt = current.speaker || 'left portrait';
+
+    const rightImg = document.createElement('img');
+    rightImg.className = 'dialogue-portrait ' + (current.side === 'right' ? 'active' : '');
+    rightImg.src = rightPortrait;
+    rightImg.alt = current.speaker || 'right portrait';
+
+    const dialogueBox = document.createElement('div');
+    dialogueBox.className = 'dialogue-box';
+
+    const speaker = document.createElement('div');
+    speaker.className = 'dialogue-speaker';
+    speaker.textContent = current.speaker || '';
+
+    const textContainer = document.createElement('div');
+    textContainer.className = 'dialogue-text';
+
+    setup.typewriterEffect(textContainer, current.text || '', current.speed || 35);
+
+    const controls = document.createElement('div');
+    controls.className = 'dialogue-controls';
+
+    const button = document.createElement('button');
+    if (safeIndex < dialogues.length - 1) {
+        button.textContent = '下一句';
+        button.addEventListener('click', () => {
+            State.variables.dialogueIndex = safeIndex + 1;
+            Engine.play(passage());
+        });
+    } else if (nextPassage) {
+        button.textContent = '继续';
+        button.addEventListener('click', () => {
+            State.variables.dialogueIndex = 0;
+            State.variables.leftPortraitActive = setup.defaultLeftPortrait;
+            State.variables.rightPortraitActive = setup.defaultRightPortrait;
+            Engine.play(nextPassage);
+        });
+    } else {
+        button.textContent = '返回菜单';
+        button.addEventListener('click', () => {
+            State.variables.dialogueIndex = 0;
+            State.variables.leftPortraitActive = setup.defaultLeftPortrait;
+            State.variables.rightPortraitActive = setup.defaultRightPortrait;
+            Engine.play('Start');
+        });
+    }
+
+    controls.appendChild(button);
+
+    dialogueBox.appendChild(speaker);
+    dialogueBox.appendChild(textContainer);
+    dialogueBox.appendChild(controls);
+
+    wrapper.appendChild(leftImg);
+    wrapper.appendChild(dialogueBox);
+    wrapper.appendChild(rightImg);
+
+    this.output.appendChild(wrapper);
+});
+
+:: Start
+<!-- 主菜单页面。按照注释修改图片路径与文案即可。 -->
+<div class="main-menu" style="background-image: url('<<print setup.menuBackground>>');">
+    <div class="menu-content">
+        <h1 class="menu-title">AI 舆情模拟中枢</h1>
+        <p style="margin-bottom: 2rem; opacity: 0.8;">
+            请选择模式进入体验。所有图片均可在“StoryInit”段落中替换。
+        </p>
+        <div class="menu-grid">
+            <div class="mode-card">
+                <img src="<<print setup.scriptModeImage>>" alt="剧本模式">
+                <h2>剧本模式</h2>
+                <p>完整剧本模式即将开放，敬请期待。</p>
+                <button class="button disabled" disabled>敬请期待</button>
+            </div>
+            <div class="mode-card">
+                <img src="<<print setup.publicOpinionImage>>" alt="舆情模式">
+                <h2>舆情游戏模式</h2>
+                <p>体验舆情情境剧本，通过事件分析和决策推进剧情发展。</p>
+                <button class="button" data-target="舆情模式首页" onclick="Engine.play(this.dataset.target)">立即进入</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+:: 舆情模式首页
+<button class="back-button" onclick="Engine.play('Start')">返回主菜单</button>
+<div class="scenario-layout">
+    <div class="scenario-main">
+        <img src="<<print $currentScenario.cover || setup.defaultCover>>" alt="当前剧本封面">
+        <div class="scenario-info">
+            <h2><<print $currentScenario.title>></h2>
+            <p><<print $currentScenario.description>></p>
+            <button class="button" data-target="<<print $currentScenario.startPassage || 'Start'>>" onclick="Engine.play(this.dataset.target)">开始剧本</button>
+        </div>
+    </div>
+    <aside class="scenario-archive">
+        <h3>往期剧本查看</h3>
+        <p style="opacity: 0.8; line-height: 1.6;">
+            点击“放到主位置”即可将对应剧本移动到主展示区，便于替换最新内容。
+        </p>
+        <<for _scenario range $pastScenarios>>
+            <div class="archive-item">
+                <img src="<<print _scenario.cover || setup.defaultCover>>" alt="往期剧本封面">
+                <div>
+                    <div style="font-weight: 600; margin-bottom: 0.4rem;"><<print _scenario.title>></div>
+                    <div style="opacity: 0.75; font-size: 0.95rem;"><<print _scenario.description>></div>
+                </div>
+                <<link "放到主位置" "舆情模式首页">>
+                    <<set _previous to clone($currentScenario)>>
+                    <<set $currentScenario to clone(_scenario)>>
+                    <<run $pastScenarios = $pastScenarios.filter(function(item){
+                        return item.startPassage !== $currentScenario.startPassage;
+                    });>>
+                    <<if _previous && _previous.startPassage && _previous.startPassage !== $currentScenario.startPassage>>
+                        <<run $pastScenarios.unshift(_previous);>>
+                    <</if>>
+                <</link>>
+            </div>
+        <</for>>
+    </aside>
+</div>
+
+:: 示例剧本-序章
+<<set $dialogueIndex = 0>>
+<<set $leftPortraitActive = setup.defaultLeftPortrait>>
+<<set $rightPortraitActive = setup.defaultRightPortrait>>
+<<set $sceneBackground to "images/backgrounds/newsroom.jpg">>
+<!-- 在下方列表中添加、删除或修改对话。支持更换背景、人物立绘以及逐字打字的速度。 -->
+<<set $dialogueList to [
+    {
+        speaker: "主持人",
+        side: "left",
+        portrait: "images/portraits/host.png",
+        rightPortrait: "images/portraits/analyst.png",
+        text: "这里是AI舆情监测中心，我们正在跟进一条突发热点。请准备好进入角色。",
+        speed: 28
+    },
+    {
+        speaker: "分析员",
+        side: "right",
+        portrait: "images/portraits/analyst.png",
+        leftPortrait: "images/portraits/host.png",
+        text: "收到，我会密切关注传播数据，并及时汇报。",
+        speed: 30
+    },
+    {
+        speaker: "主持人",
+        side: "left",
+        portrait: "images/portraits/host.png",
+        rightPortrait: "images/portraits/analyst.png",
+        text: "首先，我们需要确认舆情的源头，并识别潜在风险。准备好了就继续吧。",
+        speed: 30
+    }
+]>>
+
+<div class="dialogue-scene" style="background-image: url('<<print $sceneBackground || setup.dialogueBackground>>');">
+    <<renderDialogue $dialogueList "示例剧本-阶段一">>
+</div>
+
+:: 示例剧本-阶段一
+<<set $dialogueIndex = 0>>
+<<set $leftPortraitActive = setup.defaultLeftPortrait>>
+<<set $rightPortraitActive = setup.defaultRightPortrait>>
+<<set $sceneBackground to "images/backgrounds/strategy-room.jpg">>
+<<set $dialogueList to [
+    {
+        speaker: "分析员",
+        side: "right",
+        portrait: "images/portraits/analyst.png",
+        leftPortrait: "images/portraits/host.png",
+        text: "根据初步研判，该事件由匿名帖子引发，目前情绪以质疑为主。",
+        speed: 30
+    },
+    {
+        speaker: "主持人",
+        side: "left",
+        portrait: "images/portraits/host.png",
+        rightPortrait: "images/portraits/analyst.png",
+        text: "我们需要准备响应策略。先从梳理事实入手，锁定关键节点。",
+        speed: 30
+    }
+]>>
+
+<div class="dialogue-scene" style="background-image: url('<<print $sceneBackground || setup.dialogueBackground>>');">
+    <<renderDialogue $dialogueList "舆情模式首页">>
+</div>
+
+:: 往期剧本 A-序章
+此处为往期剧本 A 的占位内容。将内容替换为真实剧情后，可在“舆情模式首页”中通过“放到主位置”按钮展示。
+
+:: 往期剧本 B-序章
+此处为往期剧本 B 的占位内容。
