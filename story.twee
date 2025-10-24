@@ -1,0 +1,835 @@
+:: StoryTitle
+AI舆情剧本框架
+
+:: StoryData
+{
+    "ifid": "B89F0A8E-67B7-4A1F-9F0E-123456789ABC",
+    "format": "SugarCube",
+    "format-version": "2.37.3",
+    "start": "Start"
+}
+
+:: StoryInit [script]
+/* ================================================================
+   可视资源配置区
+   - 将引号内的文字替换成你自己的图片路径或文件名即可。
+   - 所有图片都支持使用本地上传的素材，名字记得保持一致。
+   ================================================================ */
+setup.menuBackground = "images/backgrounds/sunrise-menu.jpg";              // 主菜单背景
+setup.scriptModeImage = "images/ui/script-mode.png";                       // 剧本模式图标
+setup.publicOpinionImage = "images/ui/public-opinion.png";                 // 舆情模式图标
+setup.defaultCover = "images/covers/default.jpg";                          // 默认剧本封面
+setup.dialogueBackground = "images/backgrounds/briefing-room.jpg";         // 对话默认背景
+setup.defaultLeftPortrait = "images/portraits/advisor-left.png";           // 左侧默认立绘
+setup.defaultRightPortrait = "images/portraits/spokesperson-right.png";    // 右侧默认立绘
+
+/* ================================================================
+   剧本数据初始化
+   - 修改 currentScenario 内的信息即可更换主推剧本。
+   - pastScenarios 为往期剧本列表，可以随意增删。
+   - 想把往期剧本换到主推位置，进入舆情模式后点击“放到主位置”。
+   ================================================================ */
+if (!State.variables.currentScenario) {
+    State.variables.currentScenario = {
+        title: "示例舆情剧本",
+        cover: "images/covers/current-story.jpg",
+        description: "这里是主推剧本的简介。简单说明事件背景、角色目标与挑战。",
+        startPassage: "示例剧本-序章"
+    };
+}
+
+if (!State.variables.pastScenarios) {
+    State.variables.pastScenarios = [
+        {
+            title: "往期剧本 A",
+            cover: "images/covers/past-a.jpg",
+            description: "往期剧本 A 的亮点描述，可在此输入一句话卖点。",
+            startPassage: "往期剧本 A-序章"
+        },
+        {
+            title: "往期剧本 B",
+            cover: "images/covers/past-b.jpg",
+            description: "往期剧本 B 的简介，同样可以随时替换。",
+            startPassage: "往期剧本 B-序章"
+        }
+    ];
+}
+
+/* ================================================================
+   对话场景状态
+   - prepareDialogue 会设置背景、立绘与对话内容。
+   - advanceDialogue 用于切换当前显示的对话。
+   ================================================================ */
+setup.prepareDialogue = function (lines, options) {
+    State.variables.dialogueLines = Array.isArray(lines) ? lines : [];
+    State.variables.dialogueIndex = 0;
+    options = options || {};
+
+    State.variables.sceneBackground = options.background || setup.dialogueBackground;
+    State.variables.leftPortraitActive = options.leftPortrait || setup.defaultLeftPortrait;
+    State.variables.rightPortraitActive = options.rightPortrait || setup.defaultRightPortrait;
+    State.variables.activeDialogueSide = 'left';
+};
+
+setup.applyLineVisuals = function (line) {
+    if (!line) {
+        return;
+    }
+
+    if (line.background) {
+        State.variables.sceneBackground = line.background;
+    }
+
+    if (line.leftPortrait) {
+        State.variables.leftPortraitActive = line.leftPortrait;
+    }
+
+    if (line.rightPortrait) {
+        State.variables.rightPortraitActive = line.rightPortrait;
+    }
+
+    State.variables.activeDialogueSide = line.side || 'left';
+};
+
+setup.advanceDialogue = function (step) {
+    var lines = State.variables.dialogueLines || [];
+    if (!lines.length) {
+        return false;
+    }
+
+    var nextIndex = State.variables.dialogueIndex + step;
+    if (nextIndex < 0) {
+        nextIndex = 0;
+    }
+    if (nextIndex > lines.length - 1) {
+        nextIndex = lines.length - 1;
+    }
+
+    if (nextIndex !== State.variables.dialogueIndex) {
+        State.variables.dialogueIndex = nextIndex;
+        return true;
+    }
+
+    return false;
+};
+
+/* ================================================================
+   剧本管理函数
+   ================================================================ */
+setup.moveScenarioToCurrent = function (index) {
+    var list = State.variables.pastScenarios || [];
+    index = Number(index);
+
+    if (!list.length || index < 0 || index >= list.length) {
+        return;
+    }
+
+    var nextCurrent = list.splice(index, 1)[0];
+    if (State.variables.currentScenario) {
+        list.push(State.variables.currentScenario);
+    }
+    State.variables.currentScenario = nextCurrent;
+};
+
+setup.ensurePassage = function (name) {
+    if (typeof name === 'string' && name.trim()) {
+        return name;
+    }
+    return 'Start';
+};
+
+/* ================================================================
+   打字机效果实现
+   - 给元素添加 class="typewriter"，并通过 data-content 设置显示的文字。
+   - data-speed (可选) 控制速度，数值越小越快。
+   ================================================================ */
+setup.typewriterEffect = function (element) {
+    if (!element) {
+        return;
+    }
+
+    var text = element.getAttribute('data-content') || '';
+    var speed = Number(element.getAttribute('data-speed')) || 28;
+    var index = 0;
+    element.textContent = '';
+
+    function typeNext() {
+        if (index <= text.length) {
+            element.textContent = text.slice(0, index);
+            index += 1;
+            window.setTimeout(typeNext, speed);
+        }
+    }
+
+    typeNext();
+};
+
+setup.applyTypewriter = function (context) {
+    var nodes = (context || document).querySelectorAll('.typewriter[data-content]');
+    nodes.forEach(function (node) {
+        if (!node.hasAttribute('data-typed')) {
+            node.setAttribute('data-typed', 'true');
+            setup.typewriterEffect(node);
+        }
+    });
+};
+
+$(document).on(':passagerender', function (ev) {
+    setup.applyTypewriter(ev.content);
+});
+
+/* ================================================================
+   自定义宏：渲染对话框
+   ================================================================ */
+Macro.add('renderDialogue', {
+    handler: function () {
+        var lines = State.variables.dialogueLines || [];
+        var index = State.variables.dialogueIndex || 0;
+        index = Math.max(0, Math.min(index, lines.length - 1));
+        State.variables.dialogueIndex = index;
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'dialogue-box glass-card';
+
+        if (!lines.length) {
+            var empty = document.createElement('div');
+            empty.className = 'dialogue-empty';
+            empty.textContent = '请先在当前章节中设置对话内容。';
+            wrapper.appendChild(empty);
+            this.output.append(wrapper);
+            return;
+        }
+
+        var current = lines[index];
+        setup.applyLineVisuals(current);
+
+        var speaker = document.createElement('div');
+        speaker.className = 'dialogue-speaker';
+        speaker.textContent = current.speaker || '旁白';
+
+        var text = document.createElement('div');
+        text.className = 'dialogue-text typewriter';
+        text.setAttribute('data-speed', current.speed || 28);
+        text.setAttribute('data-content', current.text || '');
+
+        var progress = document.createElement('div');
+        progress.className = 'dialogue-progress';
+        progress.textContent = (index + 1) + ' / ' + lines.length;
+
+        wrapper.appendChild(speaker);
+        wrapper.appendChild(text);
+        wrapper.appendChild(progress);
+
+        this.output.append(wrapper);
+    }
+});
+
+:: StoryStylesheet [stylesheet]
+:root {
+    --sunset-yellow: #ffd166;
+    --sky-blue: #56ccf2;
+    --mint-green: #9be7ff;
+    --deep-blue: #1a2a6c;
+    --glass-bg: rgba(255, 255, 255, 0.75);
+    --text-dark: #0f172a;
+}
+
+@keyframes horizonGlow {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@keyframes floatCard {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden; /* 禁止页面出现上下滚动条 */
+    font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    color: var(--text-dark);
+    background: linear-gradient(120deg, #fff9c4, #d1f4ff, #ffe0f7);
+    background-size: 200% 200%;
+    animation: horizonGlow 18s ease infinite;
+}
+
+#story, #passages, .passage {
+    height: 100%;
+    width: 100%;
+}
+
+#passages, .passage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.passage {
+    position: relative;
+}
+
+.screen {
+    width: min(100vw, 177.78vh);
+    height: min(56.25vw, 100vh);
+    aspect-ratio: 16 / 9;
+    position: relative;
+    overflow: hidden;
+    border-radius: 32px;
+    box-shadow: 0 30px 90px rgba(26, 42, 108, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-size: cover;
+    background-position: center;
+}
+
+.screen::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(140deg, rgba(255, 255, 255, 0.7), rgba(255, 231, 179, 0.55));
+    mix-blend-mode: screen;
+}
+
+.screen > * {
+    position: relative;
+    z-index: 1;
+}
+
+.glass-card {
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.sun-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #f97316;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 0.35rem 1rem;
+    border-radius: 999px;
+    box-shadow: 0 12px 30px rgba(249, 115, 22, 0.25);
+}
+
+.menu-content {
+    width: 88%;
+    max-width: 1080px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    text-align: center;
+    color: var(--text-dark);
+}
+
+.menu-title {
+    font-size: clamp(2.8rem, 4vw, 3.6rem);
+    font-weight: 800;
+    text-shadow: 0 8px 20px rgba(255, 209, 102, 0.45);
+}
+
+.menu-grid {
+    width: 100%;
+    display: grid;
+    gap: 1.8rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.menu-card {
+    background: rgba(255, 255, 255, 0.78);
+    border-radius: 28px;
+    padding: 1.6rem;
+    box-shadow: 0 25px 60px rgba(86, 204, 242, 0.35);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    animation: floatCard 6s ease-in-out infinite;
+}
+
+.menu-card img {
+    width: 220px;
+    height: 220px;
+    object-fit: cover;
+    border-radius: 24px;
+    box-shadow: 0 18px 45px rgba(26, 42, 108, 0.25);
+}
+
+.menu-card h2 {
+    font-size: 1.6rem;
+    margin: 0;
+}
+
+.menu-card p {
+    line-height: 1.6;
+    margin: 0;
+    opacity: 0.85;
+}
+
+.menu-card .link-button,
+.menu-card .link-internal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.7rem 1.6rem;
+    background: linear-gradient(135deg, #56ccf2, #ffd166);
+    color: var(--text-dark);
+    border-radius: 999px;
+    font-weight: 700;
+    box-shadow: 0 15px 30px rgba(86, 204, 242, 0.45);
+}
+
+.menu-card.disabled {
+    filter: grayscale(0.35);
+    opacity: 0.7;
+}
+
+.menu-card.disabled .link-internal {
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.08);
+    color: rgba(15, 23, 42, 0.4);
+    box-shadow: none;
+}
+
+.scenario-wrapper {
+    width: 92%;
+    max-width: 1180px;
+    display: grid;
+    gap: 1.6rem;
+    grid-template-columns: 3fr 2fr;
+    color: var(--text-dark);
+}
+
+.scenario-main {
+    background: rgba(255, 255, 255, 0.82);
+    border-radius: 28px;
+    padding: 2rem;
+    display: flex;
+    gap: 1.5rem;
+    box-shadow: 0 25px 55px rgba(82, 196, 211, 0.35);
+}
+
+.scenario-main img {
+    width: min(32vw, 320px);
+    border-radius: 24px;
+    object-fit: cover;
+    box-shadow: 0 18px 40px rgba(26, 42, 108, 0.25);
+}
+
+.scenario-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.scenario-info h2 {
+    font-size: clamp(1.8rem, 2.6vw, 2.4rem);
+    margin: 0;
+}
+
+.scenario-info p {
+    margin: 0;
+    line-height: 1.7;
+}
+
+.action-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.action-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.4rem;
+    border-radius: 999px;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 12px 30px rgba(249, 168, 37, 0.3);
+}
+
+.action-button.sunny {
+    background: linear-gradient(135deg, #ffd166, #fca311);
+    color: #6b3800;
+}
+
+.action-button.sky {
+    background: linear-gradient(135deg, #56ccf2, #9be7ff);
+    color: #0b4f6c;
+}
+
+.scenario-archive {
+    background: rgba(255, 255, 255, 0.78);
+    border-radius: 28px;
+    padding: 1.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    box-shadow: 0 22px 50px rgba(255, 209, 102, 0.35);
+}
+
+.archive-item {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.65);
+    box-shadow: inset 0 0 0 1px rgba(17, 37, 73, 0.08);
+}
+
+.archive-item img {
+    width: 96px;
+    height: 96px;
+    border-radius: 18px;
+    object-fit: cover;
+}
+
+.archive-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.archive-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.archive-actions .link-internal {
+    padding: 0.45rem 1.1rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #a0f0ff, #ffe29f);
+    color: #17415f;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 12px 22px rgba(26, 42, 108, 0.18);
+}
+
+.back-button {
+    position: absolute;
+    top: 2.2rem;
+    left: 2.2rem;
+    padding: 0.55rem 1.5rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #1a2a6c;
+    font-weight: 700;
+    box-shadow: 0 12px 30px rgba(26, 42, 108, 0.25);
+}
+
+.dialogue-stage {
+    width: 92%;
+    max-width: 1140px;
+    height: 92%;
+    display: grid;
+    grid-template-rows: 1fr auto;
+    position: relative;
+}
+
+.dialogue-visuals {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 2.2rem 2.5rem;
+    overflow: hidden;
+}
+
+.dialogue-visuals::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.05));
+}
+
+.dialogue-visuals img {
+    width: min(32vw, 320px);
+    height: auto;
+    object-fit: contain;
+    filter: saturate(1.1);
+    opacity: 0.55;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    position: relative;
+    z-index: 1;
+}
+
+.dialogue-visuals img.active {
+    opacity: 1;
+    transform: translateY(-10px) scale(1.02);
+}
+
+.dialogue-box {
+    padding: 1.6rem 2rem;
+    border-radius: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 18px 45px rgba(26, 42, 108, 0.3);
+}
+
+.dialogue-box-wrapper {
+    padding: 0 2.5rem 2.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.dialogue-speaker {
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #1a2a6c;
+}
+
+.dialogue-text {
+    min-height: 4.8rem;
+    font-size: 1.1rem;
+    line-height: 1.8;
+}
+
+.dialogue-progress {
+    align-self: flex-end;
+    font-size: 0.85rem;
+    color: rgba(15, 23, 42, 0.55);
+}
+
+.dialogue-controls {
+    display: flex;
+    justify-content: space-between;
+    padding: 1.2rem 2rem;
+}
+
+.dialogue-controls .link-internal {
+    padding: 0.6rem 1.6rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #9be7ff, #ffd166);
+    font-weight: 700;
+    color: #0f172a;
+    box-shadow: 0 12px 26px rgba(86, 204, 242, 0.35);
+}
+
+.dialogue-empty {
+    text-align: center;
+    font-size: 1rem;
+    opacity: 0.7;
+}
+
+@media (max-width: 900px) {
+    .scenario-wrapper {
+        grid-template-columns: 1fr;
+    }
+
+    .scenario-main {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .dialogue-visuals {
+        flex-direction: column;
+        align-items: center;
+        gap: 1.2rem;
+    }
+
+    .dialogue-visuals img {
+        width: 60%;
+    }
+}
+
+:: Start
+<div class="screen" style="background-image: url('<<print setup.menuBackground>>');">
+    <div class="menu-content">
+        <span class="sun-badge">全新版本</span>
+        <h1 class="menu-title">AI 舆情互动剧本集</h1>
+        <p style="max-width: 620px; line-height: 1.7; opacity: 0.85;">
+            选择模式开始体验。所有图片、标题与简介都可以直接在 StoryInit 中替换，方便后期更新。
+        </p>
+        <div class="menu-grid">
+            <div class="menu-card disabled">
+                <img src="<<print setup.scriptModeImage>>" alt="剧本模式">
+                <h2>剧本模式</h2>
+                <p>功能开发中，敬请期待。需要开放时可以把按钮链接到对应章节。</p>
+                <<link "即将上线">><</link>>
+            </div>
+            <div class="menu-card">
+                <img src="<<print setup.publicOpinionImage>>" alt="舆情模式">
+                <h2>舆情模拟</h2>
+                <p>进入舆情专题，体验互动情景，快速熟悉事件背景与应对策略。</p>
+                <<link "进入舆情模式">><<goto "舆情模式首页">>><</link>>
+            </div>
+        </div>
+    </div>
+</div>
+
+:: 舆情模式首页
+<<set _current to $currentScenario>>
+<div class="screen" style="background-image: url('<<print setup.menuBackground>>');">
+    <span class="back-button">
+        <<link "返回主菜单">><<goto "Start">>><</link>>
+    </span>
+    <div class="scenario-wrapper">
+        <div class="scenario-main">
+            <img src="<<print _current.cover || setup.defaultCover>>" alt="当前剧本封面">
+            <div class="scenario-info">
+                <h2><<print _current.title>></h2>
+                <p><<print _current.description>></p>
+                <div class="action-group">
+                    <span class="action-button sunny">
+                        <<link "开始剧本">><<goto setup.ensurePassage(_current.startPassage)>><</link>>
+                    </span>
+                    <span class="action-button sky">
+                        <<link "往期剧本列表">><<goto "往期剧本列表">>><</link>>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="scenario-archive">
+            <h3>往期精选</h3>
+            <<if $pastScenarios.length == 0>>
+                <p>目前没有往期剧本，欢迎在 StoryInit 中新增。</p>
+            <<else>>
+                <<for _index, _scenario range $pastScenarios>>
+                    <div class="archive-item">
+                        <img src="<<print _scenario.cover || setup.defaultCover>>" alt="往期剧本封面">
+                        <div class="archive-text">
+                            <div style="font-weight: 700;"><<print _scenario.title>></div>
+                            <div style="font-size: 0.9rem; opacity: 0.8; line-height: 1.5;">
+                                <<print _scenario.description>>
+                            </div>
+                            <div class="archive-actions">
+                                <<link "查看">><<goto setup.ensurePassage(_scenario.startPassage)>><</link>>
+                                <<link "放到主位置">><<run setup.moveScenarioToCurrent(_index)>><<goto "舆情模式首页">>><</link>>
+                            </div>
+                        </div>
+                    </div>
+                <</for>>
+            <</if>>
+        </div>
+    </div>
+</div>
+
+:: 往期剧本列表
+<div class="screen" style="background-image: url('<<print setup.menuBackground>>');">
+    <span class="back-button">
+        <<link "返回">><<goto "舆情模式首页">>><</link>>
+    </span>
+    <div class="scenario-archive" style="width: 86%; max-width: 960px;">
+        <h3>全部往期剧本</h3>
+        <<if $pastScenarios.length == 0>>
+            <p>目前没有往期剧本，请在 StoryInit 中添加数据。</p>
+        <<else>>
+            <<for _index, _scenario range $pastScenarios>>
+                <div class="archive-item">
+                    <img src="<<print _scenario.cover || setup.defaultCover>>" alt="往期剧本封面">
+                    <div class="archive-text">
+                        <div style="font-weight: 700;"><<print _scenario.title>></div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; line-height: 1.5;">
+                            <<print _scenario.description>>
+                        </div>
+                        <div class="archive-actions">
+                            <<link "立即体验">><<goto setup.ensurePassage(_scenario.startPassage)>><</link>>
+                            <<link "设为主推">><<run setup.moveScenarioToCurrent(_index)>><<goto "舆情模式首页">>><</link>>
+                        </div>
+                    </div>
+                </div>
+            <</for>>
+        <</if>>
+    </div>
+</div>
+
+:: 对话舞台内容 [nobr]
+<div class="screen dialogue-screen" id="dialogue-stage" style="background-image: url('<<print $sceneBackground || setup.dialogueBackground>>');">
+    <div class="dialogue-stage">
+        <div class="dialogue-visuals">
+            <img src="<<print $leftPortraitActive || setup.defaultLeftPortrait>>" class="<<if $activeDialogueSide == 'left'>>active<</if>>" alt="左侧立绘">
+            <img src="<<print $rightPortraitActive || setup.defaultRightPortrait>>" class="<<if $activeDialogueSide == 'right'>>active<</if>>" alt="右侧立绘">
+        </div>
+        <div class="dialogue-box-wrapper">
+            <<renderDialogue>>
+            <div class="dialogue-controls">
+                <<link "上一段">>
+                    <<run setup.advanceDialogue(-1)>>
+                    <<replace '#dialogue-stage'>><<include "对话舞台内容">>><</replace>>
+                    <<run setup.applyTypewriter(document.querySelector('#dialogue-stage'))>>
+                <</link>>
+                <<link "下一段">>
+                    <<run setup.advanceDialogue(1)>>
+                    <<replace '#dialogue-stage'>><<include "对话舞台内容">>><</replace>>
+                    <<run setup.applyTypewriter(document.querySelector('#dialogue-stage'))>>
+                <</link>>
+            </div>
+        </div>
+    </div>
+</div>
+
+:: 示例剧本-序章
+<<set _lines = [
+    {
+        speaker: "值班分析师 小霄",
+        side: "left",
+        text: "总部早上好！平台上出现了一条关于新品的热搜，我们需要尽快给出研判。",
+        background: "images/backgrounds/briefing-room.jpg",
+        leftPortrait: "images/portraits/advisor-left.png",
+        rightPortrait: "images/portraits/spokesperson-right.png"
+    },
+    {
+        speaker: "品牌负责人 星澜",
+        side: "right",
+        text: "我已经收集到网友的主要观点，不过舆情方向还不稳定，请给我一份风险提示。",
+        rightPortrait: "images/portraits/spokesperson-focused.png"
+    },
+    {
+        speaker: "值班分析师 小霄",
+        side: "left",
+        text: "收到，我会先把声量趋势做成可视化，再根据评论判断核心矛盾。准备切换到应对预案。",
+        background: "images/backgrounds/command-center.jpg"
+    }
+]>>
+<<run setup.prepareDialogue(_lines)>>
+<<include "对话舞台内容">>
+
+:: 示例剧本-第二幕
+<<set _lines = [
+    {
+        speaker: "品牌负责人 星澜",
+        side: "right",
+        text: "监控系统提示有意见领袖开始引用旧闻，我们是否需要跟进澄清？",
+        rightPortrait: "images/portraits/spokesperson-alert.png"
+    },
+    {
+        speaker: "值班分析师 小霄",
+        side: "left",
+        text: "建议立即准备官方回应，在核实事实的同时发布暖心客户故事，稳定情绪。",
+        background: "images/backgrounds/press-hall.jpg"
+    }
+]>>
+<<run setup.prepareDialogue(_lines, { background: "images/backgrounds/press-hall.jpg" })>>
+<<include "对话舞台内容">>
+
+:: 往期剧本 A-序章
+<p>这里是往期剧本 A 的示例开场白。可以复制示例剧本的结构来搭建完整的互动剧情。</p>
+
+:: 往期剧本 B-序章
+<p>这里是往期剧本 B 的示例开场白。自由发挥，填充属于你的故事内容。</p>
